@@ -1,0 +1,53 @@
+stage('init'){
+            steps{
+                script{
+                    data = "${data}"
+                    data_json = readJSON text: "${data}"
+                    report_path = "${server}${report}${BUILD_NUMBER}/"
+                    report_url = "${ip}${report}${BUILD_NUMBER}/"
+                    atsBuildId = "${data_json.atsInfo.atsBuildId}"
+                    atsCallbackUrl = "${data_json.atsInfo.atsCallbackUrl}"
+                    
+                    sh "rm -f *.zip"
+
+                    sh """
+                    curl --request POST \"${atsCallbackUrl}\" \
+                    --header \"Content-Type: application/json\" \
+                    --data \'{\"atsBuildId\":${atsBuildId}, \"status\":\"RUNNING\", \"buildId\":$BUILD_NUMBER}\'
+                    """
+                }
+
+    post{
+        always{
+            script{
+                sh 'cp $JENKINS_HOME/jobs/$JOB_NAME/builds/$BUILD_NUMBER/log ./log.txt'
+                sh "zip report.zip *.png log.txt report.csv"
+                sh "cp report.zip ${report_path}"
+            }
+        }
+        failure{
+            echo "fail"
+            sh """
+            curl --request POST \"${atsCallbackUrl}\" \
+            --header \"Content-Type: application/json\" \
+            --data \'{\"atsBuildId\":${atsBuildId}, \"status\":\"ERROR\", \"buildId\":$BUILD_NUMBER, \"result\":\"{\\\"reportUrl\\\":\\\"${report_url}report.html\\\"}\"}\'
+            """
+        }
+        success{
+            echo "success"
+            sh """
+            curl --request POST \"${atsCallbackUrl}\" \
+            --header \"Content-Type: application/json\" \
+            --data \'{\"atsBuildId\":${atsBuildId}, \"status\":\"FINISHED\", \"buildId\":$BUILD_NUMBER, \"result\":\"{\\\"reportUrl\\\":\\\"${report_url}report.html\\\"}\"}\'
+            """
+        }
+        aborted{
+            echo "abort"
+            sh """
+            curl --request POST \"${atsCallbackUrl}\" \
+            --header \"Content-Type: application/json\" \
+            --data \'{\"atsBuildId\":${atsBuildId}, \"status\":\"ERROR\", \"buildId\":$BUILD_NUMBER, \"result\":\"{\\\"reportUrl\\\":\\\"${report_url}report.html\\\",\\\"taskResult\\\":\\\"Cancel by Jenkins user\\\"}\"}\'
+            """
+        }
+    }
+}
